@@ -45,9 +45,11 @@ def register_swagger_endpoints():
     def _serve_openapi_spec(_request):
         spec = get_localstack_openapi_spec()
         response_body = yaml.dump(spec)
-        return werkzeug.Response(response_body, content_type="application/yaml")
+        return werkzeug.Response(
+            response_body, content_type="application/yaml", direct_passthrough=True
+        )
 
-    ROUTER.add(RuleAdapter("/static/openapi.yaml", _serve_openapi_spec))
+    ROUTER.add(RuleAdapter("/openapi.yaml", _serve_openapi_spec))
     ROUTER.add(RuleAdapter("/static/<path:path>", _serve_static_file))
 
 
