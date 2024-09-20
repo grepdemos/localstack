@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -2394,6 +2395,48 @@ class TestSecretsManager:
                 SecretId=secret_name, VersionId=version_id, VersionStage="AWSPREVIOUS"
             )
         sm_snapshot.match("mismatch_version_id_and_stage", exc.value.response)
+
+    @markers.aws.validated
+    @markers.snapshot.skip_snapshot_verify(paths=["$..CreatedDate"])
+    def test_get_secret_value(
+        self, aws_client, aws_http_client_factory, region_name, create_secret, sm_snapshot
+    ):
+        secret_name = short_uid()
+        secret_string = "footest"
+        secret_string_b64_encoded = base64.b64encode(secret_string.encode())
+
+        response = create_secret(
+            Name=secret_name,
+            SecretBinary=secret_string,
+        )
+
+        sm_snapshot.add_transformers_list(
+            sm_snapshot.transform.secretsmanager_secret_id_arn(response, 0)
+        )
+
+        secret_arn = response["ARN"]
+
+        secret_value_response = aws_client.secretsmanager.get_secret_value(SecretId=secret_arn)
+
+        sm_snapshot.match("secret_value_response", secret_value_response)
+
+        assert secret_value_response["SecretBinary"] == secret_string.encode()
+
+        client = aws_http_client_factory(
+            "secretsmanager", region=region_name, signer_factory=SigV4Auth
+        )
+        parameters = {"SecretId": secret_name}
+
+        headers = {
+            "X-Amz-Target": "secretsmanager.GetSecretValue",
+            "Content-Type": "application/x-amz-json-1.1",
+        }
+
+        response = client.post("/", data=json.dumps(parameters), headers=headers)
+        json_response = response.json()
+        sm_snapshot.match("secret_value_http_response", json_response)
+
+        assert json_response["SecretBinary"] == str(secret_string_b64_encoded, encoding="utf-8")
 
 
 class TestSecretsManagerMultiAccounts:
